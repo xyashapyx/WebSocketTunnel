@@ -10,7 +10,7 @@ byte[] bytes = Encoding.ASCII.GetBytes(message);
 
 Memory<byte> dd = bytes; 
 
-var cc = (dd[..3]).ToArray();
+var cc = (dd[3..]).ToArray();
 
 var arr = new byte[128];
 var bigBytes = new Span<byte>(arr);
