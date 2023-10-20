@@ -16,7 +16,9 @@ public abstract class WsBase
         PackageSize = packageSize;
     }
 
-    public async Task SendCloseCommand(int remoteStreamId)
+    public bool IsConnected => WebSocket != null && WebSocket.State == WebSocketState.Open;
+
+    public async Task SendCloseCommandAsync(int remoteStreamId)
     {
         if (WebSocket == null || WebSocket.State != WebSocketState.Open)
         {
@@ -27,21 +29,21 @@ public abstract class WsBase
             CancellationToken.None);
     }
 
-    public async Task RespondToMessage(int localStreamId, int remoteStreamId, Memory<byte> data)
+    public async Task RespondToMessageAsync(int localStreamId, int remoteStreamId, Memory<byte> data)
     {
         string command = $"{Consts.ResponseToStream}:{remoteStreamId}:{localStreamId}";
-        await SendBytes(command, data);
+        await SendBytesAsync(command, data);
     }
     
-    public async Task InnitConnection(int localStreamId, int localPort, Memory<byte> data)
+    public async Task InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
     {
         string command = $"{Consts.ResponseToStream}:{localPort}:{localStreamId}";
-        await SendBytes(command, data);
+        await SendBytesAsync(command, data);
     }
 
     //TODO: I expect that first Consts.CommandSizeBytes is free and can hold commad.
     //TODO: Can we do better?
-    private async Task SendBytes(string command, Memory<byte> data)
+    private async Task SendBytesAsync(string command, Memory<byte> data)
     {
         var encodedCommand = Encoding.ASCII.GetBytes(command);
         encodedCommand.CopyTo(data);
