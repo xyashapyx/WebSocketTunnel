@@ -6,7 +6,7 @@ namespace WebSocketTunnel;
 
 public abstract class WsBase
 {
-    protected WebSocket WebSocket;
+    private WebSocket _webSocket;
     protected int PackageSize = 32768;
     protected TcpConnector TcpConnector;
 
@@ -14,6 +14,17 @@ public abstract class WsBase
     {
         TcpConnector = tcpConnector;
         PackageSize = packageSize;
+    }
+
+    protected WebSocket WebSocket
+    {
+        get => _webSocket;
+        set
+        {
+            _webSocket = value;
+            TcpConnector.InnitWs(this);
+            Task.Run(() => ReceiveMessage());
+        }
     }
 
     public bool IsConnected => WebSocket != null && WebSocket.State == WebSocketState.Open;
@@ -37,7 +48,7 @@ public abstract class WsBase
     
     public async Task InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
     {
-        string command = $"{Consts.ResponseToStream}:{localPort}:{localStreamId}";
+        string command = $"{Consts.NewConnection}:{localPort}:{localStreamId}";
         await SendBytesAsync(command, data);
     }
 
@@ -55,35 +66,44 @@ public abstract class WsBase
         //TODO:Work in multithreading
         while (true)
         {
-            if (WebSocket == null || WebSocket.State != WebSocketState.Open)
+            try
             {
+                if (WebSocket == null || WebSocket.State != WebSocketState.Open)
+                {
+                    await Task.Delay(1000);
+                    continue;
+                }
+                //TODO:remove
                 await Task.Delay(1000);
-                continue;
-            }
-            Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
+                Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
 
-            var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None);
-            if (message.MessageType == WebSocketMessageType.Close)
-            {
-                await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                WebSocket = null;
-                break;
-            }
-            if (message.MessageType == WebSocketMessageType.Text)
-            {
-                await ProcessCommand(buffer);
-                continue;
-            }
+                var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None);
+                if (message.MessageType == WebSocketMessageType.Close)
+                {
+                    await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                    WebSocket = null;
+                    break;
+                }
+                if (message.MessageType == WebSocketMessageType.Text)
+                {
+                    await ProcessCommand(buffer);
+                    continue;
+                }
 
-            int packageSize = message.Count;
-            await ProcessData(buffer, packageSize);
+                int packageSize = message.Count;
+                await ProcessData(buffer, packageSize);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
         }
     }
 
     private async Task ProcessCommand(Memory<byte> buffer)
     {
         int streamId = 0;
-        var command = Encoding.ASCII.GetString(buffer.Span);
+        var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
         if (command.StartsWith(Consts.CloseCommand))
         {
             //TODO: can we use bytes instead?
@@ -113,7 +133,7 @@ public abstract class WsBase
             int localStreamId = int.Parse(splited[1]);
             await TcpConnector.RespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
         }
-
-        Console.WriteLine($"Wrong Command {command}");
+        else
+            Console.WriteLine($"Wrong Command {command}");
     }
 }

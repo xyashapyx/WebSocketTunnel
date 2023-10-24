@@ -2,24 +2,30 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 
 namespace WebSocketTunnel;
 
 public class TcpConnector
 {
     private readonly string _targetIp;
-    private ConcurrentDictionary<int, int> _localToRemoteStreamsMapping = new ConcurrentDictionary<int, int>();
-    private ConcurrentDictionary<int, int> _remoteToLocalStreamsMapping = new ConcurrentDictionary<int, int>();
+    private ConcurrentDictionary<int, int> _localToRemoteStreamsMapping = new();
+    private ConcurrentDictionary<int, int> _remoteToLocalStreamsMapping = new();
     private ConcurrentDictionary<int, NetworkStream> _streams = new();
 
     //TODO: innit this
     private WsBase _wsBase;
 
-    public TcpConnector(string targetIp)
+    public TcpConnector(string targetIp, IEnumerable<int> listeningPort, string localIp)
     {
         _targetIp = targetIp;
+        //TODO: extract method
+        foreach (var localPort in listeningPort)
+        {
+            Task.Run(() => StartListeningForConnections(localPort, localIp));
+        }
     }
-    
+
     public void CloseStream(int streamId)
     {
         if (_streams.ContainsKey(streamId))
@@ -65,16 +71,27 @@ public class TcpConnector
         var localServer = new TcpListener(new IPEndPoint(IPAddress.Parse(localIp), listeningPort));
         localServer.Server.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.AcceptConnection, false);
         localServer.Start();
-        var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
-        var clientStream = localServerConnection.GetStream();
-        _streams.TryAdd(clientStream.GetHashCode(), clientStream);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
-        int bytesRead = await clientStream.ReadAsync(buffer, Consts.CommandSizeBytes, Consts.TcpPackageSize-Consts.CommandSizeBytes).ConfigureAwait(false);
-        await WaitToWsReadyAsync();
-
-        await _wsBase.InnitConnectionAsync(clientStream.GetHashCode(), listeningPort, buffer[..(bytesRead + Consts.CommandSizeBytes)]);
         
-        Task.Run(() => StartReadingFromStream(clientStream));
+        //This is new connection
+        //TODO: we need to have task of this
+        while (true)
+        {
+            Console.WriteLine($"Waiting for TCP connection {localIp}:{listeningPort}");
+            var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
+            Console.WriteLine($"Got TCP connection on {localIp}:{listeningPort}");
+            var clientStream = localServerConnection.GetStream();
+            _streams.TryAdd(clientStream.GetHashCode(), clientStream);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
+            int bytesRead = await clientStream
+                .ReadAsync(buffer, Consts.CommandSizeBytes, Consts.TcpPackageSize - Consts.CommandSizeBytes)
+                .ConfigureAwait(false);
+            await WaitToWsReadyAsync();
+
+            await _wsBase.InnitConnectionAsync(clientStream.GetHashCode(), listeningPort,
+                buffer[..(bytesRead + Consts.CommandSizeBytes)]);
+
+            Task.Run(() => StartReadingFromStream(clientStream));
+        }
     }
 
     private async Task StartReadingFromStream(NetworkStream networkStream)
@@ -106,5 +123,10 @@ public class TcpConnector
             //TODO: wait in while cycle
             await Task.Delay(1000);
         }
+    }
+
+    public void InnitWs(WsBase webSocket)
+    {
+        _wsBase = webSocket;
     }
 }

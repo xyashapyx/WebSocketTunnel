@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using System.Net.WebSockets;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 
@@ -29,6 +30,8 @@ public class WsServer: WsBase
                     Console.WriteLine($"Wating for connection on {wsUrl}");
                     WebSocket = await context.WebSockets.AcceptWebSocketAsync();
                     Console.WriteLine("Connected");
+                    while (WebSocket.State == WebSocketState.Open)
+                        await Task.Delay(1000);
                 }
                 else
                 {
@@ -40,5 +43,6 @@ public class WsServer: WsBase
                 await next(context);
             }
         });
+        await app.RunAsync();
     }
 }

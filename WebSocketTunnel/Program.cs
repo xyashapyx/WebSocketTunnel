@@ -1,19 +1,17 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
 using System.Text;
+using WebSocketTunnel;
 
-Console.WriteLine("Hello, World!");
+string localhostIp = "127.0.0.1";
 
-var message = "192.168.111.13:4007";
+var tcpMSP = new TcpConnector("192.168.111.20", new List<int>{80}, localhostIp);
+var tcpTenant = new TcpConnector("192.168.111.20", new List<int>{9669}, localhostIp);
 
-byte[] bytes = Encoding.ASCII.GetBytes(message);
+var wsMsp = new WsServer(tcpMSP, Consts.TcpPackageSize);
+var wsTenant = new WsClient(tcpTenant, Consts.TcpPackageSize);
 
-Memory<byte> dd = bytes; 
+Task.Run(()=> wsMsp.Start(6666, localhostIp));
+Task.Run(()=> wsTenant.Start(6666, localhostIp));
 
-var cc = (dd[3..]).ToArray();
-
-var arr = new byte[128];
-var bigBytes = new Span<byte>(arr);
-bytes.CopyTo(bigBytes);
-var message1 = Encoding.ASCII.GetString(bigBytes);
-Console.WriteLine(bytes);
+Console.ReadLine();
