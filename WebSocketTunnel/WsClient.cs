@@ -1,12 +1,15 @@
 ﻿using System.Buffers;
 using System.Net;
 using System.Net.WebSockets;
+using NLog;
 
 namespace WebSocketTunnel;
 
 public class WsClient: WsBase
 {
-    public WsClient(TcpConnector tcpConnector, int packageSize) : base(tcpConnector, packageSize)
+    private static Logger _logger = LogManager.GetCurrentClassLogger();
+
+    public WsClient(TcpConnector tcpConnector, int packageSize) : base(tcpConnector, packageSize, _logger)
     {
     }
     
@@ -24,12 +27,12 @@ public class WsClient: WsBase
 
             string wsType = httpPrefix == Consts.Http ? "ws" : "wss";
             string url = $"{wsType}://{serverIp}:{wsPort}/ws";
-            Console.WriteLine($"Connecting to {url}");
+            _logger.Info($"Connecting to {url}");
             await ws.ConnectAsync(new Uri(url), new HttpMessageInvoker(handler), CancellationToken.None);
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            _logger.Error(e);
         }
     }
 }

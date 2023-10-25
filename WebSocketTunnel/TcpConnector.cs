@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using NLog;
 
 namespace WebSocketTunnel;
 
@@ -11,6 +12,7 @@ public class TcpConnector
     private ConcurrentDictionary<int, int> _localToRemoteStreamsMapping = new();
     private ConcurrentDictionary<int, int> _remoteToLocalStreamsMapping = new();
     private ConcurrentDictionary<int, NetworkStream> _streams = new();
+    private static Logger _logger = LogManager.GetCurrentClassLogger();
 
     //TODO: innit this
     private WsBase _wsBase;
@@ -38,7 +40,7 @@ public class TcpConnector
         }
         else
         {
-            Console.WriteLine($"Did not find remote Stream {remoteStreamId}");
+            _logger.Warn($"Did not find remote Stream {remoteStreamId}");
         }
     }
 
@@ -72,13 +74,13 @@ public class TcpConnector
             }
             else
             {
-                Console.WriteLine($"Cannot find remote stream {remoteStreamId}");
+                _logger.Warn($"Cannot find remote stream {remoteStreamId}");
                 return;
             }
         }
 
         if(!_streams.TryGetValue(localStreamId, out  var stream))
-            Console.WriteLine($"Cannot find local stream {localStreamId}");
+            _logger.Warn($"Cannot find local stream {localStreamId}");
         else
             await stream.WriteAsync(memory);
     }
@@ -93,9 +95,9 @@ public class TcpConnector
         //TODO: we need to have task of this
         while (true)
         {
-            Console.WriteLine($"Waiting for TCP connection {localIp}:{listeningPort}");
+            _logger.Info($"Waiting for TCP connection {localIp}:{listeningPort}");
             var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
-            Console.WriteLine($"Got TCP connection on {localIp}:{listeningPort}");
+            _logger.Info($"Got TCP connection on {localIp}:{listeningPort}");
             var clientStream = localServerConnection.GetStream();
             int localStreamId = clientStream.GetHashCode();
             _streams.TryAdd(localStreamId, clientStream);
@@ -125,7 +127,7 @@ public class TcpConnector
             {
                 //TODO:wait for stream to be ready
                 await _wsBase.SendCloseCommandAsync(localStreamHashCode);
-                Console.WriteLine($"Sending close stream {localStreamHashCode}");
+                _logger.Info($"Sending close stream {localStreamHashCode}");
                 return;
             }
 
@@ -140,7 +142,7 @@ public class TcpConnector
     {
         if (_wsBase == null || !_wsBase.IsConnected)
         {
-            Console.WriteLine("Ws is not connected, waiting");
+            _logger.Info("Ws is not connected, waiting");
             //TODO: wait in while cycle
             await Task.Delay(1000);
         }

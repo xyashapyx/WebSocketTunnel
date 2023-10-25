@@ -1,6 +1,8 @@
 ﻿using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using NLog;
 
 namespace WebSocketTunnel;
 
@@ -8,12 +10,14 @@ public abstract class WsBase
 {
     private WebSocket _webSocket;
     protected int PackageSize = 32768;
+    private readonly Logger _logger;
     protected TcpConnector TcpConnector;
 
-    public WsBase(TcpConnector tcpConnector, int packageSize)
+    public WsBase(TcpConnector tcpConnector, int packageSize, Logger logger)
     {
         TcpConnector = tcpConnector;
         PackageSize = packageSize;
+        _logger = logger;
     }
 
     protected WebSocket WebSocket
@@ -33,22 +37,22 @@ public abstract class WsBase
     {
         if (WebSocket == null || WebSocket.State != WebSocketState.Open)
         {
-            Console.WriteLine($"Cannot close stream {remoteStreamId}, WS disconnected");
+            _logger.Warn($"Cannot close stream {remoteStreamId}, WS disconnected");
         }
-        string command = $"{Consts.CloseCommand}:{remoteStreamId}";
+        string command = $"{Consts.CloseCommand}:{remoteStreamId}:";
         await WebSocket.SendAsync(Encoding.ASCII.GetBytes(command), WebSocketMessageType.Text, true,
             CancellationToken.None);
     }
 
     public async Task RespondToMessageAsync(int localStreamId, int remoteStreamId, Memory<byte> data)
     {
-        string command = $"{Consts.ResponseToStream}:{remoteStreamId}:{localStreamId}";
+        string command = $"{Consts.ResponseToStream}:{remoteStreamId}:{localStreamId}:";
         await SendBytesAsync(command, data);
     }
     
     public async Task InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
     {
-        string command = $"{Consts.NewConnection}:{localPort}:{localStreamId}";
+        string command = $"{Consts.NewConnection}:{localPort}:{localStreamId}:";
         await SendBytesAsync(command, data);
     }
 
@@ -56,7 +60,7 @@ public abstract class WsBase
     //TODO: Can we do better?
     private async Task SendBytesAsync(string command, Memory<byte> data)
     {
-        Console.WriteLine(command);
+        _logger.Info(command);
         var encodedCommand = Encoding.ASCII.GetBytes(command);
         encodedCommand.CopyTo(data);
         await WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
@@ -96,7 +100,7 @@ public abstract class WsBase
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                _logger.Error(e);
             }
         }
     }
@@ -105,11 +109,11 @@ public abstract class WsBase
     {
         int streamId = 0;
         var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
-        Console.WriteLine($"Got command {command}");
+        _logger.Info($"Got command {command}");
         if (command.StartsWith(Consts.CloseCommand))
         {
             //TODO: can we use bytes instead?
-            streamId = int.Parse(command.Split(':').Last());
+            streamId = int.Parse(command.Split(':')[1]);
             TcpConnector.CloseStream(streamId);
             return;
         }
@@ -120,7 +124,7 @@ public abstract class WsBase
     private async Task ProcessData(Memory<byte> buffer, int size)
     {
         string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].ToArray());
-        Console.WriteLine($"Got command {command}");
+        _logger.Info($"Got command {command}");
         if (command.StartsWith(Consts.NewConnection))
         {
             var splited = command.Split(':');
@@ -137,6 +141,6 @@ public abstract class WsBase
             await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
         }
         else
-            Console.WriteLine($"Wrong Command {command}");
+            _logger.Warn($"Wrong Command {command}");
     }
 }

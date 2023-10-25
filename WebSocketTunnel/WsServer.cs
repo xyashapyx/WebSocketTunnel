@@ -2,13 +2,16 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using NLog;
 
 namespace WebSocketTunnel;
 
 public class WsServer: WsBase
 {
+    private static Logger _logger = LogManager.GetCurrentClassLogger();
+
     public WsServer(TcpConnector tcpConnector, int packageSize)
-        :base(tcpConnector, packageSize)
+        :base(tcpConnector, packageSize, _logger)
     {
     }
     
@@ -27,9 +30,9 @@ public class WsServer: WsBase
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
-                    Console.WriteLine($"Wating for connection on {wsUrl}");
+                    _logger.Info($"Wating for connection on {wsUrl}");
                     WebSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    Console.WriteLine("Connected");
+                    _logger.Info("Connected");
                     while (WebSocket.State == WebSocketState.Open)
                         await Task.Delay(1000);
                 }
