@@ -79,7 +79,6 @@ public abstract class WsBase
                     continue;
                 }
                 //TODO:remove
-                await Task.Delay(1000);
                 Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
 
                 var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None);
@@ -96,6 +95,7 @@ public abstract class WsBase
                 }
 
                 int packageSize = message.Count;
+                _logger.Info($"Package size {packageSize}");
                 await ProcessData(buffer, packageSize);
             }
             catch (Exception e)
