@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Net.WebSockets;
 
 namespace WebSocketTunnel;
 
@@ -26,18 +25,20 @@ public class TcpConnector
         }
     }
 
-    public void CloseStream(int streamId)
+    public void CloseStream(int remoteStreamId)
     {
-        if (_streams.ContainsKey(streamId))
+        //TODO: wait for remote stream
+        if (_remoteToLocalStreamsMapping.ContainsKey(remoteStreamId))
         {
-            _streams[streamId]?.Close();
-            _streams.TryRemove(streamId, out _);
-            _remoteToLocalStreamsMapping.TryRemove(_localToRemoteStreamsMapping[streamId], out _);
-            _localToRemoteStreamsMapping.TryRemove(streamId, out _);
+            var localStreamId = _remoteToLocalStreamsMapping[remoteStreamId];
+            _streams[localStreamId]?.Close();
+            _streams.TryRemove(localStreamId, out _);
+            _remoteToLocalStreamsMapping.TryRemove(remoteStreamId, out _);
+            _localToRemoteStreamsMapping.TryRemove(localStreamId, out _);
         }
         else
         {
-            Console.WriteLine($"Did not find Stream {streamId}");
+            Console.WriteLine($"Did not find remote Stream {remoteStreamId}");
         }
     }
 
@@ -48,22 +49,38 @@ public class TcpConnector
         var forwardClient = new TcpClient();
         await forwardClient.ConnectAsync(IPAddress.Parse(_targetIp), remotePort).ConfigureAwait(false);
         var clientStream = forwardClient.GetStream();
-        _streams.TryAdd(clientStream.GetHashCode(), clientStream);
-        _localToRemoteStreamsMapping.TryAdd(clientStream.GetHashCode(), remoteStreamId);
-        _remoteToLocalStreamsMapping.TryAdd(remoteStreamId, clientStream.GetHashCode());
+        int localStreamHashCode = clientStream.GetHashCode();
+        _streams.TryAdd(localStreamHashCode, clientStream);
+        _localToRemoteStreamsMapping.TryAdd(localStreamHashCode, remoteStreamId);
+        _remoteToLocalStreamsMapping.TryAdd(remoteStreamId, localStreamHashCode);
         await clientStream.WriteAsync(memory);
 
         Task.Run(() => StartReadingFromStream(clientStream));
         //TODO: read response somehow
     }
 
-    public async Task RespondToStreamAsync(int remoteStreamId, int localStreamId, Memory<byte> memory)
+    public async Task HandleRespondToStreamAsync(int remoteStreamId, int localStreamHashCode, Memory<byte> memory)
     {
+        //TODO:wait for innit local stream
+        if (!_remoteToLocalStreamsMapping.TryGetValue(remoteStreamId, out int localStreamId))
+        {
+            if (localStreamHashCode != default)
+            {
+                _localToRemoteStreamsMapping.TryAdd(localStreamHashCode, remoteStreamId);
+                _remoteToLocalStreamsMapping.TryAdd(remoteStreamId, localStreamHashCode);
+                localStreamId = localStreamHashCode;
+            }
+            else
+            {
+                Console.WriteLine($"Cannot find remote stream {remoteStreamId}");
+                return;
+            }
+        }
+
         if(!_streams.TryGetValue(localStreamId, out  var stream))
-            Console.WriteLine($"Cannot find stream {localStreamId}");
-        _localToRemoteStreamsMapping.TryAdd(localStreamId, remoteStreamId);
-        _remoteToLocalStreamsMapping.TryAdd(remoteStreamId, localStreamId);
-        await stream.WriteAsync(memory);
+            Console.WriteLine($"Cannot find local stream {localStreamId}");
+        else
+            await stream.WriteAsync(memory);
     }
 
     private async Task StartListeningForConnections(int listeningPort, string localIp)
@@ -80,14 +97,15 @@ public class TcpConnector
             var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
             Console.WriteLine($"Got TCP connection on {localIp}:{listeningPort}");
             var clientStream = localServerConnection.GetStream();
-            _streams.TryAdd(clientStream.GetHashCode(), clientStream);
+            int localStreamId = clientStream.GetHashCode();
+            _streams.TryAdd(localStreamId, clientStream);
             byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
             int bytesRead = await clientStream
                 .ReadAsync(buffer, Consts.CommandSizeBytes, Consts.TcpPackageSize - Consts.CommandSizeBytes)
                 .ConfigureAwait(false);
             await WaitToWsReadyAsync();
 
-            await _wsBase.InnitConnectionAsync(clientStream.GetHashCode(), listeningPort,
+            await _wsBase.InnitConnectionAsync(localStreamId, listeningPort,
                 buffer[..(bytesRead + Consts.CommandSizeBytes)]);
 
             Task.Run(() => StartReadingFromStream(clientStream));
@@ -105,13 +123,16 @@ public class TcpConnector
             
             if (bytesRead == 0)
             {
-                await _wsBase.SendCloseCommandAsync(_localToRemoteStreamsMapping[localStreamHashCode]);
-                Console.WriteLine($"Sending close stream {_localToRemoteStreamsMapping[localStreamHashCode]}");
+                //TODO:wait for stream to be ready
+                await _wsBase.SendCloseCommandAsync(localStreamHashCode);
+                Console.WriteLine($"Sending close stream {localStreamHashCode}");
                 return;
             }
 
-            await _wsBase.RespondToMessageAsync(localStreamHashCode, _localToRemoteStreamsMapping[localStreamHashCode],
-                buffer[..(bytesRead + Consts.CommandSizeBytes)]);
+            var remoteStreamKnown = _localToRemoteStreamsMapping.TryGetValue(localStreamHashCode, out var remoteStreamId);
+            
+            await _wsBase.RespondToMessageAsync(localStreamHashCode,
+                remoteStreamKnown? remoteStreamId: default, buffer[..(bytesRead + Consts.CommandSizeBytes)]);
         }
     }
 

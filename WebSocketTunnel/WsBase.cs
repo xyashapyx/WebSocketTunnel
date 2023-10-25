@@ -56,6 +56,7 @@ public abstract class WsBase
     //TODO: Can we do better?
     private async Task SendBytesAsync(string command, Memory<byte> data)
     {
+        Console.WriteLine(command);
         var encodedCommand = Encoding.ASCII.GetBytes(command);
         encodedCommand.CopyTo(data);
         await WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
@@ -104,6 +105,7 @@ public abstract class WsBase
     {
         int streamId = 0;
         var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
+        Console.WriteLine($"Got command {command}");
         if (command.StartsWith(Consts.CloseCommand))
         {
             //TODO: can we use bytes instead?
@@ -118,6 +120,7 @@ public abstract class WsBase
     private async Task ProcessData(Memory<byte> buffer, int size)
     {
         string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].ToArray());
+        Console.WriteLine($"Got command {command}");
         if (command.StartsWith(Consts.NewConnection))
         {
             var splited = command.Split(':');
@@ -131,7 +134,7 @@ public abstract class WsBase
             var splited = command.Split(':');
             int remoteStreamId = int.Parse(splited[2]);
             int localStreamId = int.Parse(splited[1]);
-            await TcpConnector.RespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
+            await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
         }
         else
             Console.WriteLine($"Wrong Command {command}");
