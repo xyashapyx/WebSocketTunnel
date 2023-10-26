@@ -14,6 +14,9 @@
     </ItemGroup>
     <ItemGroup>
         <None Update="nlog.config" CopyToOutputDirectory="Always" />
+        <None Update="Config.json">
+          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="NLog" Version="5.2.5" />

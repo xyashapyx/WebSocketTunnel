@@ -2,19 +2,35 @@
 
 using NLog;
 using WebSocketTunnel;
+using WebSocketTunnel.DTO;
 
 var logger = LogManager.GetCurrentClassLogger();
 
-logger.Info("Started new");
-string localhostIp = "127.0.0.1";
+logger.Info("Started new instance");
 
-var tcpMSP = new TcpConnector("92.168.111.20", new List<int>{9669}, localhostIp);
-var tcpTenant = new TcpConnector("192.168.111.20", new List<int>{5201}, localhostIp);
+var config = ConfigService.ReadConfig();
 
-var wsMsp = new WsServer(tcpMSP, Consts.TcpPackageSize);
-var wsTenant = new WsClient(tcpTenant, Consts.TcpPackageSize);
-
-Task.Run(()=> wsMsp.Start(6666, localhostIp, "https"));
-Task.Run(()=> wsTenant.Start(6666, "localhost", "https", "2.0"));
+if (config.WsConfig.Mode == WsMode.Server)
+{
+    StartServer(config);
+}
+else
+{
+    StartClient(config);
+}
 
 Console.ReadLine();
+
+void StartServer(Config config)
+{
+    var tcpMSP = new TcpConnector(config.TcpConfig.TargetVmIp, config.TcpConfig.ListeningPorts, config.LocalVmIp);
+    var wsMsp = new WsServer(tcpMSP, Consts.TcpPackageSize);
+    Task.Run(()=> wsMsp.Start(config.WsConfig.WsPort, config.LocalVmIp, config.WsConfig.WsSeccurity));
+}
+
+void StartClient(Config config)
+{
+    var tcpTenant = new TcpConnector(config.TcpConfig.TargetVmIp, config.TcpConfig.ListeningPorts, config.LocalVmIp);
+    var wsTenant = new WsClient(tcpTenant, Consts.TcpPackageSize);
+    Task.Run(()=> wsTenant.Start(config.WsConfig.WsPort, config.LocalVmIp, config.WsConfig.WsSeccurity, config.WsConfig.TcpVersion));
+}

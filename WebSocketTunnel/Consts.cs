@@ -12,4 +12,6 @@ public class Consts
     public const string Https = "https";
 
     public const string Http11 = "1.1";
+
+    public const string ConfigFileName = "Config.json";
 }

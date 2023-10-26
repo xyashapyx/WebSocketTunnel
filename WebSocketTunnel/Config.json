@@ -1,0 +1,1 @@
+{"LocalVmIp":"127.0.0.1","WsConfig":{"Mode":0,"WsSeccurity":"https","WsPort":6666,"TcpVersion":"2.0"},"TcpConfig":{"TargetVmIp":"192.168.111.20","ListeningPorts":[9669,9779]}}
