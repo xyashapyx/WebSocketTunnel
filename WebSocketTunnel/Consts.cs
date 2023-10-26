@@ -2,9 +2,11 @@
 
 public class Consts
 {
-    public const string CloseCommand = "Close";
-    public const string NewConnection = "New";
-    public const string ResponseToStream = "Response";
+    public const byte CloseCommand = 22; //"Close";
+    public const byte NewConnection = 23; //"New";
+    public const byte ResponseToStream = 24;// "Response";
+    public const byte CommandSplitter = 21;
+    
     public const int CommandSizeBytes = 32;
     public const int TcpPackageSize = 81920;
     

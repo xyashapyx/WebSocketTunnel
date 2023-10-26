@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using NLog;
 
 namespace WebSocketTunnel;
@@ -39,30 +38,28 @@ public abstract class WsBase
         {
             _logger.Warn($"Cannot close stream {remoteStreamId}, WS disconnected");
         }
-        string command = $"{Consts.CloseCommand}:{remoteStreamId}:";
-        await WebSocket.SendAsync(Encoding.ASCII.GetBytes(command), WebSocketMessageType.Text, true,
+        Memory<byte> command = SerializeCommand(Consts.CloseCommand, remoteStreamId);
+        await WebSocket.SendAsync(command, WebSocketMessageType.Text, true,
             CancellationToken.None);
     }
 
     public async Task RespondToMessageAsync(int localStreamId, int remoteStreamId, Memory<byte> data)
     {
-        string command = $"{Consts.ResponseToStream}:{remoteStreamId}:{localStreamId}:";
+        Memory<byte> command = SerializeCommand(Consts.ResponseToStream, remoteStreamId, localStreamId);
         await SendBytesAsync(command, data);
     }
     
     public async Task InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
     {
-        string command = $"{Consts.NewConnection}:{localPort}:{localStreamId}:";
+        Memory<byte> command = SerializeCommand(Consts.NewConnection, localPort, localStreamId);
         await SendBytesAsync(command, data);
     }
 
     //TODO: I expect that first Consts.CommandSizeBytes is free and can hold commad.
     //TODO: Can we do better?
-    private async Task SendBytesAsync(string command, Memory<byte> data)
+    private async Task SendBytesAsync(Memory<byte> command, Memory<byte> data)
     {
-        _logger.Info(command);
-        var encodedCommand = Encoding.ASCII.GetBytes(command);
-        encodedCommand.CopyTo(data);
+        command.CopyTo(data);
         await WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
     }
 
@@ -95,7 +92,7 @@ public abstract class WsBase
                 }
 
                 int packageSize = message.Count;
-                _logger.Info($"Package size {packageSize}");
+                //_logger.Info($"Package size {packageSize}");
                 await ProcessData(buffer, packageSize);
             }
             catch (Exception e)
@@ -108,12 +105,12 @@ public abstract class WsBase
     private async Task ProcessCommand(Memory<byte> buffer)
     {
         int streamId = 0;
-        var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.CloseCommand))
+        var command = DeserializeCommand(buffer[..Consts.CommandSizeBytes].Span);
+        //_logger.Info($"Got command {command.Item1}");
+        if (command.Item1 == Consts.CloseCommand)
         {
             //TODO: can we use bytes instead?
-            streamId = int.Parse(command.Split(':')[1]);
+            streamId = command.Item2[0];
             TcpConnector.CloseStream(streamId);
             return;
         }
@@ -123,24 +120,71 @@ public abstract class WsBase
 
     private async Task ProcessData(Memory<byte> buffer, int size)
     {
-        string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].ToArray());
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.NewConnection))
+        var command = DeserializeCommand(buffer[..Consts.CommandSizeBytes].Span);
+        //_logger.Info($"Got command {command.Item1}");
+        if (command.Item1 == Consts.NewConnection)
         {
-            var splited = command.Split(':');
-            int remotePort = int.Parse(splited[1]);
-            int remoteStreamId = int.Parse(splited[2]);
+            int remotePort = command.Item2[0];
+            int remoteStreamId = command.Item2[1];
             await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]);
         }
         else
-        if (command.StartsWith(Consts.ResponseToStream))
+        if (command.Item1 == Consts.ResponseToStream)
         {
-            var splited = command.Split(':');
-            int remoteStreamId = int.Parse(splited[2]);
-            int localStreamId = int.Parse(splited[1]);
+            int remoteStreamId = command.Item2[1];
+            int localStreamId = command.Item2[0];
             await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
         }
         else
             _logger.Warn($"Wrong Command {command}");
+    }
+    
+    //TODO: move to helper class
+    public static Memory<byte> SerializeCommand(byte command, params int[] parameters)
+    {
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.CommandSizeBytes);
+        int position = 0;
+        buffer[position++] = command;
+        InjectCommandSplitter();
+
+        foreach (var parameter in parameters)
+        {
+            byte[] parameterBytes = IntArrayConvertor.IntToArr(parameter);
+            foreach (var parameterByte in parameterBytes)
+            {
+                buffer[position++] = parameterByte;
+            }
+            InjectCommandSplitter();
+        }
+        
+        return buffer;
+
+        void InjectCommandSplitter()
+        {
+            buffer[position++] = Consts.CommandSplitter;
+        }
+    }
+
+    public static (byte, int[]) DeserializeCommand(Span<byte> data)
+    {
+        int position = 0;
+        int parameterId = 0;
+        byte command = data[position];
+        int[] commandParams = new int[2];
+        position += 2;
+        int startPosition = position;
+
+        while (position < data.Length)
+        {
+            if (data[position++] == Consts.CommandSplitter)
+            {
+                commandParams[parameterId++] = IntArrayConvertor.ArrToInt(data[startPosition..(position - 1)]);
+                startPosition = position;
+                if (parameterId == 2)
+                 break;
+            }
+        }
+        
+        return new(command, commandParams);
     }
 }
