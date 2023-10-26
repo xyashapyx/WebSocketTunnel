@@ -87,30 +87,36 @@ public class TcpConnector
 
     private async Task StartListeningForConnections(int listeningPort, string localIp)
     {
-        var localServer = new TcpListener(new IPEndPoint(IPAddress.Parse(localIp), listeningPort));
-        localServer.Server.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.AcceptConnection, false);
-        localServer.Start();
-        
-        //This is new connection
-        //TODO: we need to have task of this
-        while (true)
+        try
         {
-            _logger.Info($"Waiting for TCP connection {localIp}:{listeningPort}");
-            var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
-            _logger.Info($"Got TCP connection on {localIp}:{listeningPort}");
-            var clientStream = localServerConnection.GetStream();
-            int localStreamId = clientStream.GetHashCode();
-            _streams.TryAdd(localStreamId, clientStream);
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
-            int bytesRead = await clientStream
-                .ReadAsync(buffer, Consts.CommandSizeBytes, Consts.TcpPackageSize - Consts.CommandSizeBytes)
-                .ConfigureAwait(false);
-            await WaitToWsReadyAsync();
+            var localServer = new TcpListener(new IPEndPoint(IPAddress.Parse(localIp), listeningPort));
+            localServer.Start();
+        
+            //This is new connection
+            //TODO: we need to have task of this
+            while (true)
+            {
+                _logger.Info($"Waiting for TCP connection {localIp}:{listeningPort}");
+                var localServerConnection = await localServer.AcceptTcpClientAsync().ConfigureAwait(false);
+                _logger.Info($"Got TCP connection on {localIp}:{listeningPort}");
+                var clientStream = localServerConnection.GetStream();
+                int localStreamId = clientStream.GetHashCode();
+                _streams.TryAdd(localStreamId, clientStream);
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
+                int bytesRead = await clientStream
+                    .ReadAsync(buffer, Consts.CommandSizeBytes, Consts.TcpPackageSize - Consts.CommandSizeBytes)
+                    .ConfigureAwait(false);
+                await WaitToWsReadyAsync();
 
-            await _wsBase.InnitConnectionAsync(localStreamId, listeningPort,
-                buffer[..(bytesRead + Consts.CommandSizeBytes)]);
+                await _wsBase.InnitConnectionAsync(localStreamId, listeningPort,
+                    buffer[..(bytesRead + Consts.CommandSizeBytes)]);
 
-            Task.Run(() => StartReadingFromStream(clientStream));
+                Task.Run(() => StartReadingFromStream(clientStream));
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e);
         }
     }
 

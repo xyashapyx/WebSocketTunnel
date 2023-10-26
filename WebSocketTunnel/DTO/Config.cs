@@ -14,6 +14,7 @@ public class WsConfig
     public WsMode Mode { get; set; }
     public string WsSeccurity { get; set; }
     public int WsPort { get; set; }
+    public string WsServerIp { get; set; }
     public string TcpVersion { get; set; }
 }
 
