@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using System.Net;
+﻿using System.Net;
 using System.Net.WebSockets;
 using NLog;
 
@@ -20,11 +19,9 @@ public class WsClient: WsBase
         {
             var ws = new ClientWebSocket();
             WebSocket = ws;
-
             using SocketsHttpHandler handler = new();
             ws.Options.HttpVersion = httpVersion == Consts.Http11? HttpVersion.Version11: HttpVersion.Version20;
             ws.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-
             string wsType = httpPrefix == Consts.Http ? "ws" : "wss";
             string url = $"{wsType}://{serverIp}:{wsPort}/ws";
             _logger.Info($"Connecting to {url}");
