@@ -20,6 +20,7 @@ public class WsClient: WsBase
             var ws = new ClientWebSocket();
             WebSocket = ws;
             using SocketsHttpHandler handler = new();
+            handler.SslOptions.RemoteCertificateValidationCallback += (sender, certificate, chain, errors) => true;
             ws.Options.HttpVersion = httpVersion == Consts.Http11? HttpVersion.Version11: HttpVersion.Version20;
             ws.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact;
             string wsType = httpPrefix == Consts.Http ? "ws" : "wss";
