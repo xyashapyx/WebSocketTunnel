@@ -108,7 +108,7 @@ public abstract class WsBase
     {
         var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
         _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.CloseCommand))
+        if (command.StartsWith(Consts.CloseCommand, StringComparison.Ordinal))
         {
             //TODO: can we use bytes instead?
             int streamId = int.Parse(command.Split(':')[1]);
@@ -123,7 +123,7 @@ public abstract class WsBase
     {
         string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
         _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.NewConnection))
+        if (command.StartsWith(Consts.NewConnection, StringComparison.Ordinal))
         {
             var splited = command.Split(':');
             int remotePort = int.Parse(splited[1]);
@@ -131,7 +131,7 @@ public abstract class WsBase
             await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else
-        if (command.StartsWith(Consts.ResponseToStream))
+        if (command.StartsWith(Consts.ResponseToStream, StringComparison.Ordinal))
         {
             var splited = command.Split(':');
             int remoteStreamId = int.Parse(splited[2]);
