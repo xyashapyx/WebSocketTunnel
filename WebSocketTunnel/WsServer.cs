@@ -26,7 +26,7 @@ public class WsServer: WsBase
         app.UseWebSockets(wsOptions);
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path == "/ws")
+            if (context.Request.Path == "/ws")//192.168.111.10:5555/ws
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
