@@ -1,6 +1,7 @@
 ﻿using NLog;
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Net.WebSockets;
 using System.Text;
 
@@ -130,7 +131,7 @@ public abstract class WsBase
             int firstDelimiterIndex = span.IndexOf(Consts.DelimiterByte);
 
             span = span[..firstDelimiterIndex];
-            int streamId = GetInt(in span);
+            _ = Utf8Parser.TryParse(span, out int streamId, out _);
 
             TcpConnector.CloseStream(streamId);
             return;
@@ -166,30 +167,12 @@ public abstract class WsBase
 
             int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
             span = span[..delimiterIndex];
-
-            firstInteger = GetInt(in span);
+            _ = Utf8Parser.TryParse(span, out firstInteger, out _);
 
             delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
             span = span[..delimiterIndex];
 
-            secondInteger = GetInt(in span);
-        }
-    }
-
-
-    private static int GetInt(in Span<byte> bytes)
-    {
-        char[] buffer = ArrayPool<char>.Shared.Rent(bytes.Length);
-        try
-        {
-            Span<char> firstChars = buffer;
-            m_asciiDecoder.GetChars(bytes, firstChars, true);
-
-            return int.Parse(firstChars);
-        }
-        finally
-        {
-            ArrayPool<char>.Shared.Return(buffer);
+            _ = Utf8Parser.TryParse(span, out secondInteger, out _);
         }
     }
 }
