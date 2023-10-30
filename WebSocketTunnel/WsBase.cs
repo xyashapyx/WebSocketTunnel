@@ -2,7 +2,6 @@
 using System;
 using System.Buffers;
 using System.Net.WebSockets;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace WebSocketTunnel;
@@ -88,23 +87,31 @@ public abstract class WsBase
                 }
 
                 //TODO:remove
-                Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
-                var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
-                if (message.MessageType == WebSocketMessageType.Close)
+                byte[] array = ArrayPool<byte>.Shared.Rent(PackageSize);
+                try
                 {
-                    await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
-                    WebSocket = null;
-                    break;
-                }
-                if (message.MessageType == WebSocketMessageType.Text)
-                {
-                    ProcessCommand(buffer);
-                    continue;
-                }
+                    Memory<byte> buffer = array;
+                    var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
+                    if (message.MessageType == WebSocketMessageType.Close)
+                    {
+                        await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
+                        WebSocket = null;
+                        break;
+                    }
+                    if (message.MessageType == WebSocketMessageType.Text)
+                    {
+                        ProcessCommand(buffer);
+                        continue;
+                    }
 
-                int packageSize = message.Count;
-                _logger.Info($"Package size {packageSize}");
-                await ProcessData(buffer, packageSize).ConfigureAwait(false);
+                    int packageSize = message.Count;
+                    _logger.Info($"Package size {packageSize}");
+                    await ProcessData(buffer, packageSize).ConfigureAwait(false);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
             }
             catch (Exception e)
             {

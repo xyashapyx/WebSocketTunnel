@@ -78,7 +78,7 @@ public class TcpConnector
             }
         }
 
-        if(!_streams.TryGetValue(localStreamId, out  var stream))
+        if (!_streams.TryGetValue(localStreamId, out var stream))
             _logger.Warn($"Cannot find local stream {localStreamId}");
         else
             await stream.WriteAsync(memory).ConfigureAwait(false);
@@ -90,7 +90,7 @@ public class TcpConnector
         {
             var localServer = new TcpListener(new IPEndPoint(IPAddress.Parse(localIp), listeningPort));
             localServer.Start();
-        
+
             //This is new connection
             //TODO: we need to have task of this
             while (true)
@@ -102,15 +102,24 @@ public class TcpConnector
                 int localStreamId = clientStream.GetHashCode();
                 _streams.TryAdd(localStreamId, clientStream);
 
-                Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
-                int bytesRead = await clientStream
-                    .ReadAsync(buffer[Consts.CommandSizeBytes..Consts.TcpPackageSize])
-                    .ConfigureAwait(false);
-                await WaitToWsReadyAsync().ConfigureAwait(false);
+                byte[] array = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
+                try
+                {
+                    Memory<byte> buffer = array;
 
-                await _wsBase.InnitConnectionAsync(localStreamId, listeningPort, buffer[..(bytesRead + Consts.CommandSizeBytes)]).ConfigureAwait(false);
+                    int bytesRead = await clientStream
+                        .ReadAsync(buffer[Consts.CommandSizeBytes..Consts.TcpPackageSize])
+                        .ConfigureAwait(false);
+                    await WaitToWsReadyAsync().ConfigureAwait(false);
 
-                Task.Run(() => StartReadingFromStream(clientStream));
+                    await _wsBase.InnitConnectionAsync(localStreamId, listeningPort, buffer[..(bytesRead + Consts.CommandSizeBytes)]).ConfigureAwait(false);
+
+                    Task.Run(() => StartReadingFromStream(clientStream));
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
             }
         }
         catch (Exception e)
@@ -122,24 +131,32 @@ public class TcpConnector
     private async Task StartReadingFromStream(NetworkStream networkStream)
     {
         int localStreamHashCode = networkStream.GetHashCode();
-        Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
-        while (_streams.ContainsKey(localStreamHashCode))
+        byte[] array = ArrayPool<byte>.Shared.Rent(Consts.TcpPackageSize);
+        try
         {
-            int bytesRead = await networkStream.ReadAsync(buffer[Consts.CommandSizeBytes..Consts.TcpPackageSize]).ConfigureAwait(false);
-            await WaitToWsReadyAsync().ConfigureAwait(false);
-
-            if (bytesRead == 0)
+            Memory<byte> buffer = array;
+            while (_streams.ContainsKey(localStreamHashCode))
             {
-                //TODO:wait for stream to be ready
-                await _wsBase.SendCloseCommandAsync(localStreamHashCode).ConfigureAwait(false);
-                _logger.Info($"Sending close stream {localStreamHashCode}");
-                return;
-            }
+                int bytesRead = await networkStream.ReadAsync(buffer[Consts.CommandSizeBytes..Consts.TcpPackageSize]).ConfigureAwait(false);
+                await WaitToWsReadyAsync().ConfigureAwait(false);
 
-            var remoteStreamKnown = _localToRemoteStreamsMapping.TryGetValue(localStreamHashCode, out var remoteStreamId);
-            
-            await _wsBase.RespondToMessageAsync(localStreamHashCode,
-                remoteStreamKnown? remoteStreamId: default, buffer[..(bytesRead + Consts.CommandSizeBytes)]).ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    //TODO:wait for stream to be ready
+                    await _wsBase.SendCloseCommandAsync(localStreamHashCode).ConfigureAwait(false);
+                    _logger.Info($"Sending close stream {localStreamHashCode}");
+                    return;
+                }
+
+                var remoteStreamKnown = _localToRemoteStreamsMapping.TryGetValue(localStreamHashCode, out var remoteStreamId);
+
+                await _wsBase.RespondToMessageAsync(localStreamHashCode,
+                    remoteStreamKnown ? remoteStreamId : default, buffer[..(bytesRead + Consts.CommandSizeBytes)]).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
         }
     }
 
