@@ -2,6 +2,7 @@
 using System;
 using System.Buffers;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace WebSocketTunnel;
@@ -10,6 +11,9 @@ public abstract class WsBase
 {
     // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
     private static readonly Encoder s_asciiEncoder = Encoding.ASCII.GetEncoder();
+
+    // TODO rewrite with Ascii.FromUtf16 on net8.0 for beter performance
+    private static readonly Decoder m_asciiDecoder = Encoding.ASCII.GetDecoder();
 
     private WebSocket _webSocket;
     protected int PackageSize = 32768;
@@ -42,6 +46,7 @@ public abstract class WsBase
         {
             _logger.Warn($"Cannot close stream {remoteStreamId}, WS disconnected");
         }
+
         string command = $"{Consts.CloseCommand}:{remoteStreamId}:";
         return WebSocket.SendAsync(Encoding.ASCII.GetBytes(command), WebSocketMessageType.Text, true, CancellationToken.None);
     }
@@ -81,9 +86,9 @@ public abstract class WsBase
                     await Task.Delay(1000).ConfigureAwait(false);
                     continue;
                 }
+
                 //TODO:remove
                 Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
-
                 var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
                 if (message.MessageType == WebSocketMessageType.Close)
                 {
@@ -114,8 +119,11 @@ public abstract class WsBase
         //_logger.Info($"Got command {command}");
         if (commandSpan.StartsWith(Consts.CloseCommandBytes.Span))
         {
-            //TODO: can we use bytes instead?
-            int streamId = int.Parse(command.Split(':')[1]);
+            Span<byte> span = commandSpan[(Consts.CloseCommandBytes.Length + 1)..];
+            int firstDelimiterIndex = span.IndexOf(Consts.DelimiterByte);
+
+            span = span[..firstDelimiterIndex];
+            int streamId = GetInt(in span);
 
             TcpConnector.CloseStream(streamId);
             return Task.CompletedTask;
@@ -130,22 +138,51 @@ public abstract class WsBase
         //_logger.Info($"Got command {command}");
         if (commandBuffer.Span.StartsWith(Consts.NewConnectionBytes.Span))
         {
-            var splited = command.Split(':');
-            int remotePort = int.Parse(splited[1]);
-            int remoteStreamId = int.Parse(splited[2]);
+            ParseStringBytes(commandBuffer, out int remotePort, out int remoteStreamId);
             await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else if (commandBuffer.Span.StartsWith(Consts.ResponseToStreamBytes.Span))
         {
-            var splited = command.Split(':');
-            int remoteStreamId = int.Parse(splited[2]);
-            int localStreamId = int.Parse(splited[1]);
+            ParseStringBytes(commandBuffer, out int localStreamId, out int remoteStreamId);
             await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else
         {
             string command = Encoding.ASCII.GetString(commandBuffer.Span);
             _logger.Warn($"Wrong Command {command}");
-        }         
+        }
+
+
+        static void ParseStringBytes(Memory<byte> commandBuffer, out int firstInteger, out int secondInteger)
+        {
+            Span<byte> span = commandBuffer.Span[(Consts.CloseCommandBytes.Length + 1)..];
+
+            int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
+            span = span[..delimiterIndex];
+
+            firstInteger = GetInt(in span);
+
+            delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
+            span = span[..delimiterIndex];
+
+            secondInteger = GetInt(in span);
+        }
+    }
+
+
+    private static int GetInt(in Span<byte> bytes)
+    {
+        char[] buffer = ArrayPool<char>.Shared.Rent(bytes.Length);
+        try
+        {
+            Span<char> firstChars = buffer;
+            m_asciiDecoder.GetChars(bytes, firstChars, true);
+
+            return int.Parse(firstChars);
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
     }
 }

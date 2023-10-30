@@ -4,6 +4,8 @@ namespace WebSocketTunnel;
 
 public static class Consts
 {
+    public const byte DelimiterByte = (byte)':';
+
     public const string CloseCommand = "Close";
     public static readonly Memory<byte> CloseCommandBytes = new Memory<byte>(Encoding.ASCII.GetBytes(CloseCommand));
 

@@ -8,16 +8,52 @@ var logger = LogManager.GetCurrentClassLogger();
 
 logger.Info("Started new instance");
 
-var config = ConfigService.ReadConfig();
+var configServer = new Config()
+{
+    LocalVmIp = "127.0.0.1",
+    TcpConfig = new TcpConfig()
+    {
+        ListeningPorts = new int[] { 443 },
+        TargetVmIp = "10.171.81.29",
+    },
+    WsConfig = new WsConfig()
+    {
+        Mode = WsMode.Server,
+        TcpVersion = "1.1",
+        WsPort = 6666,
+        WsSeccurity = "http",
+        WsServerIp = "127.0.0.1",
+    }
+};
+var configClient = new Config()
+{
+    LocalVmIp = "127.0.0.1",
+    TcpConfig = new TcpConfig()
+    {
+        ListeningPorts = new int[] { 8081 },
+        TargetVmIp = "10.171.81.29",
+    },
+    WsConfig = new WsConfig()
+    {
+        Mode = WsMode.Client,
+        TcpVersion = "1.1",
+        WsPort = 6666,
+        WsSeccurity = "http",
+        WsServerIp = "127.0.0.1",
+    }
+};
 
-if (config.WsConfig.Mode == WsMode.Server)
-{
-    StartServer(config);
-}
-else
-{
-    StartClient(config);
-}
+StartServer(configServer);
+StartClient(configClient);
+
+//if (config.WsConfig.Mode == WsMode.Server)
+//{
+//    StartServer(config);
+//}
+//else
+//{
+//    StartClient(config);
+//}
 
 Console.ReadLine();
 
