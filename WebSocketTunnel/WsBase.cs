@@ -1,13 +1,16 @@
-﻿using System.Buffers;
+﻿using NLog;
+using System;
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
-using Microsoft.Extensions.Logging;
-using NLog;
 
 namespace WebSocketTunnel;
 
 public abstract class WsBase
 {
+    // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
+    private static readonly Encoder s_asciiEncoder = Encoding.ASCII.GetEncoder();
+
     private WebSocket _webSocket;
     protected int PackageSize = 32768;
     private readonly Logger _logger;
@@ -56,12 +59,13 @@ public abstract class WsBase
     }
 
     //TODO: I expect that first Consts.CommandSizeBytes is free and can hold commad.
-    //TODO: Can we do better?
     private ValueTask SendBytesAsync(string command, Memory<byte> data)
     {
         _logger.Info(command);
-        var encodedCommand = Encoding.ASCII.GetBytes(command);
-        encodedCommand.CopyTo(data);
+
+        // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
+        s_asciiEncoder.GetBytes(command, data.Span, false);
+
         return WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
     }
 
@@ -104,16 +108,17 @@ public abstract class WsBase
         }
     }
 
-    private async Task ProcessCommand(Memory<byte> buffer)
+    private Task ProcessCommand(Memory<byte> buffer)
     {
-        var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.CloseCommand, StringComparison.Ordinal))
+        Span<byte> commandSpan = buffer[..Consts.CommandSizeBytes].Span;
+        //_logger.Info($"Got command {command}");
+        if (commandSpan.StartsWith(Consts.CloseCommandBytes.Span))
         {
             //TODO: can we use bytes instead?
             int streamId = int.Parse(command.Split(':')[1]);
+
             TcpConnector.CloseStream(streamId);
-            return;
+            return Task.CompletedTask;
         }
 
         throw new NotImplementedException();
@@ -121,17 +126,16 @@ public abstract class WsBase
 
     private async Task ProcessData(Memory<byte> buffer, int size)
     {
-        string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.NewConnection, StringComparison.Ordinal))
+        Memory<byte> commandBuffer = buffer[..Consts.CommandSizeBytes];
+        //_logger.Info($"Got command {command}");
+        if (commandBuffer.Span.StartsWith(Consts.NewConnectionBytes.Span))
         {
             var splited = command.Split(':');
             int remotePort = int.Parse(splited[1]);
             int remoteStreamId = int.Parse(splited[2]);
             await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
-        else
-        if (command.StartsWith(Consts.ResponseToStream, StringComparison.Ordinal))
+        else if (commandBuffer.Span.StartsWith(Consts.ResponseToStreamBytes.Span))
         {
             var splited = command.Split(':');
             int remoteStreamId = int.Parse(splited[2]);
@@ -139,6 +143,9 @@ public abstract class WsBase
             await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else
+        {
+            string command = Encoding.ASCII.GetString(commandBuffer.Span);
             _logger.Warn($"Wrong Command {command}");
+        }         
     }
 }
