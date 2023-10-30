@@ -12,9 +12,6 @@ public abstract class WsBase
     // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
     private static readonly Encoder s_asciiEncoder = Encoding.ASCII.GetEncoder();
 
-    // TODO rewrite with Ascii.FromUtf16 on net8.0 for beter performance
-    private static readonly Decoder m_asciiDecoder = Encoding.ASCII.GetDecoder();
-
     private WebSocket _webSocket;
     protected int PackageSize = 32768;
     private readonly Logger _logger;
