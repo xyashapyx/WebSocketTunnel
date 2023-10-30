@@ -98,7 +98,7 @@ public abstract class WsBase
                 }
                 if (message.MessageType == WebSocketMessageType.Text)
                 {
-                    await ProcessCommand(buffer).ConfigureAwait(false);
+                    ProcessCommand(buffer);
                     continue;
                 }
 
