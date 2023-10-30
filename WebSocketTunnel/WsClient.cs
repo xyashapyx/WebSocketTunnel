@@ -26,7 +26,7 @@ public class WsClient: WsBase
             string wsType = httpPrefix == Consts.Http ? "ws" : "wss";
             string url = $"{wsType}://{serverIp}:{wsPort}/ws";
             _logger.Info($"Connecting to {url}");
-            await ws.ConnectAsync(new Uri(url), new HttpMessageInvoker(handler), CancellationToken.None);
+            await ws.ConnectAsync(new Uri(url), new HttpMessageInvoker(handler), CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception e)
         {
