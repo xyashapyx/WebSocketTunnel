@@ -113,7 +113,7 @@ public abstract class WsBase
         }
     }
 
-    private Task ProcessCommand(Memory<byte> buffer)
+    private void ProcessCommand(Memory<byte> buffer)
     {
         Span<byte> commandSpan = buffer[..Consts.CommandSizeBytes].Span;
         //_logger.Info($"Got command {command}");
@@ -126,7 +126,7 @@ public abstract class WsBase
             int streamId = GetInt(in span);
 
             TcpConnector.CloseStream(streamId);
-            return Task.CompletedTask;
+            return;
         }
 
         throw new NotImplementedException();
