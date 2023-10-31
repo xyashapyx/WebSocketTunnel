@@ -5,7 +5,7 @@
         <TargetFramework>net7.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <ServerGarbageCollection>true</ServerGarbageCollection>
+        <ServerGarbageCollection>true</ServerGarbageCollection>  <!--Remove on net8.0 since it will be enabled by default-->
         <TieredPGO>true</TieredPGO>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
