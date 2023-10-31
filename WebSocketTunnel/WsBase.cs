@@ -159,12 +159,13 @@ public abstract class WsBase
             _logger.Warn($"Wrong Command {command}");
         }
 
-
+        // Expects default string
+        // command:4444:333:
         void ParseStringBytes(Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
         {
             try
             {
-                //new:4444:333:
+                //command:4444:333:
                 Span<byte> span = commandBuffer.Span[(commandLength + 1)..];
                 //4444:333:...
 
