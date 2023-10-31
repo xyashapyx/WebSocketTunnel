@@ -9,9 +9,6 @@ namespace WebSocketTunnel;
 
 public abstract class WsBase
 {
-    // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
-    private static readonly Encoder s_asciiEncoder = Encoding.ASCII.GetEncoder();
-
     private WebSocket _webSocket;
     protected int PackageSize = 32768;
     private readonly Logger _logger;
@@ -65,8 +62,13 @@ public abstract class WsBase
     {
         _logger.Info(command);
 
-        // TODO rewrite with Ascii.FromUtf16 on net8.0 for 10x performance
-        s_asciiEncoder.GetBytes(command, data.Span, false);
+        //TODO rewrite with Ascii.FromUtf16 on net8.0
+        Span<byte> dataSpan = data.Span;
+        for (int x = 0; x < command.Length; x++)
+        {
+            ref byte currentByte = ref dataSpan[x];
+            currentByte = (byte)command[x];
+        }
 
         return WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
     }
