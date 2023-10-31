@@ -161,7 +161,7 @@ public abstract class WsBase
 
         // Expects default string
         // command:4444:333:
-        void ParseStringBytes(Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
+        void ParseStringBytes(in Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
         {
             try
             {
