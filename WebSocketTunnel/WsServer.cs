@@ -15,7 +15,7 @@ public class WsServer: WsBase
     {
     }
     
-    public async Task Start(int wsPort, string serverIp, string httpPrefix = "http")
+    public Task Start(int wsPort, string serverIp, string httpPrefix = "http")
     {
         var builder = WebApplication.CreateBuilder();
         string wsUrl = $"{httpPrefix}://{serverIp}:{wsPort}";
@@ -31,10 +31,10 @@ public class WsServer: WsBase
                 if (context.WebSockets.IsWebSocketRequest)
                 {
                     _logger.Info($"Wating for connection on {wsUrl}");
-                    WebSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    WebSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
                     _logger.Info("Connected");
                     while (WebSocket.State == WebSocketState.Open)
-                        await Task.Delay(1000);
+                        await Task.Delay(1000).ConfigureAwait(false);
                 }
                 else
                 {
@@ -43,9 +43,9 @@ public class WsServer: WsBase
             }
             else
             {
-                await next(context);
+                await next(context).ConfigureAwait(false);
             }
         });
-        await app.RunAsync();
+        return app.RunAsync();
     }
 }

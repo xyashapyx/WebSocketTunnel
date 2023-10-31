@@ -1,8 +1,8 @@
-﻿using System.Buffers;
+﻿using NLog;
+using System.Buffers;
+using System.Buffers.Text;
 using System.Net.WebSockets;
 using System.Text;
-using Microsoft.Extensions.Logging;
-using NLog;
 
 namespace WebSocketTunnel;
 
@@ -33,37 +33,44 @@ public abstract class WsBase
 
     public bool IsConnected => WebSocket != null && WebSocket.State == WebSocketState.Open;
 
-    public async Task SendCloseCommandAsync(int remoteStreamId)
+    public Task SendCloseCommandAsync(int remoteStreamId)
     {
         if (WebSocket == null || WebSocket.State != WebSocketState.Open)
         {
             _logger.Warn($"Cannot close stream {remoteStreamId}, WS disconnected");
         }
+
         string command = $"{Consts.CloseCommand}:{remoteStreamId}:";
-        await WebSocket.SendAsync(Encoding.ASCII.GetBytes(command), WebSocketMessageType.Text, true,
-            CancellationToken.None);
+        return WebSocket.SendAsync(Encoding.ASCII.GetBytes(command), WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
-    public async Task RespondToMessageAsync(int localStreamId, int remoteStreamId, Memory<byte> data)
+    public ValueTask RespondToMessageAsync(int localStreamId, int remoteStreamId, Memory<byte> data)
     {
         string command = $"{Consts.ResponseToStream}:{remoteStreamId}:{localStreamId}:";
-        await SendBytesAsync(command, data);
+        return SendBytesAsync(command, data);
     }
-    
-    public async Task InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
+
+    public ValueTask InnitConnectionAsync(int localStreamId, int localPort, Memory<byte> data)
     {
         string command = $"{Consts.NewConnection}:{localPort}:{localStreamId}:";
-        await SendBytesAsync(command, data);
+        return SendBytesAsync(command, data);
     }
 
     //TODO: I expect that first Consts.CommandSizeBytes is free and can hold commad.
-    //TODO: Can we do better?
-    private async Task SendBytesAsync(string command, Memory<byte> data)
+    private ValueTask SendBytesAsync(string command, Memory<byte> data)
     {
         _logger.Info(command);
-        var encodedCommand = Encoding.ASCII.GetBytes(command);
-        encodedCommand.CopyTo(data);
-        await WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
+
+        //TODO rewrite with Ascii.FromUtf16 on net8.0
+        Span<byte> dataSpan = data.Span;
+        ReadOnlySpan<char> commandSpan = command.AsSpan();
+        for (int x = 0; x < commandSpan.Length; x++)
+        {
+            ref byte currentByte = ref dataSpan[x];
+            currentByte = (byte)commandSpan[x];
+        }
+
+        return WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
     }
 
     protected async Task ReceiveMessage()
@@ -75,28 +82,36 @@ public abstract class WsBase
             {
                 if (WebSocket == null || WebSocket.State != WebSocketState.Open)
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(1000).ConfigureAwait(false);
                     continue;
                 }
+
                 //TODO:remove
-                Memory<byte> buffer = ArrayPool<byte>.Shared.Rent(PackageSize);
-
-                var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None);
-                if (message.MessageType == WebSocketMessageType.Close)
+                byte[] array = ArrayPool<byte>.Shared.Rent(PackageSize);
+                try
                 {
-                    await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                    WebSocket = null;
-                    break;
-                }
-                if (message.MessageType == WebSocketMessageType.Text)
-                {
-                    await ProcessCommand(buffer);
-                    continue;
-                }
+                    Memory<byte> buffer = array;
+                    var message = await WebSocket.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
+                    if (message.MessageType == WebSocketMessageType.Close)
+                    {
+                        await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
+                        WebSocket = null;
+                        break;
+                    }
+                    if (message.MessageType == WebSocketMessageType.Text)
+                    {
+                        ProcessCommand(buffer);
+                        continue;
+                    }
 
-                int packageSize = message.Count;
-                _logger.Info($"Package size {packageSize}");
-                await ProcessData(buffer, packageSize);
+                    int packageSize = message.Count;
+                    _logger.Info($"Package size {packageSize}");
+                    await ProcessData(buffer, packageSize).ConfigureAwait(false);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
             }
             catch (Exception e)
             {
@@ -105,42 +120,71 @@ public abstract class WsBase
         }
     }
 
-    private async Task ProcessCommand(Memory<byte> buffer)
+    private void ProcessCommand(Memory<byte> buffer)
     {
-        int streamId = 0;
-        var command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].Span);
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.CloseCommand))
+        Span<byte> commandSpan = buffer[..Consts.CommandSizeBytes].Span;
+        //_logger.Info($"Got command {command}");
+        if (commandSpan.StartsWith(Consts.CloseCommandBytes.Span))
         {
-            //TODO: can we use bytes instead?
-            streamId = int.Parse(command.Split(':')[1]);
+            Span<byte> span = commandSpan[(Consts.CloseCommandBytes.Length + 1)..];
+            int firstDelimiterIndex = span.IndexOf(Consts.DelimiterByte);
+
+            span = span[..firstDelimiterIndex];
+            _ = Utf8Parser.TryParse(span, out int streamId, out _);
+
             TcpConnector.CloseStream(streamId);
             return;
         }
-        
+
         throw new NotImplementedException();
     }
 
     private async Task ProcessData(Memory<byte> buffer, int size)
     {
-        string command = Encoding.ASCII.GetString(buffer[..Consts.CommandSizeBytes].ToArray());
-        _logger.Info($"Got command {command}");
-        if (command.StartsWith(Consts.NewConnection))
+        Memory<byte> commandBuffer = buffer[..Consts.CommandSizeBytes];
+        //_logger.Info($"Got command {command}");
+        if (commandBuffer.Span.StartsWith(Consts.NewConnectionBytes.Span))
         {
-            var splited = command.Split(':');
-            int remotePort = int.Parse(splited[1]);
-            int remoteStreamId = int.Parse(splited[2]);
-            await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]);
+            ParseStringBytes(commandBuffer, Consts.NewConnectionBytes.Span.Length,out int remotePort, out int remoteStreamId);
+            await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
+        }
+        else if (commandBuffer.Span.StartsWith(Consts.ResponseToStreamBytes.Span))
+        {
+            ParseStringBytes(commandBuffer, Consts.ResponseToStreamBytes.Span.Length, out int localStreamId, out int remoteStreamId);
+            await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else
-        if (command.StartsWith(Consts.ResponseToStream))
         {
-            var splited = command.Split(':');
-            int remoteStreamId = int.Parse(splited[2]);
-            int localStreamId = int.Parse(splited[1]);
-            await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]);
-        }
-        else
+            string command = Encoding.ASCII.GetString(commandBuffer.Span);
             _logger.Warn($"Wrong Command {command}");
+        }
+
+        // Expects default string
+        // command:4444:333:someData
+        void ParseStringBytes(in Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
+        {
+            try
+            {
+                //command:4444:333:someData
+                Span<byte> span = commandBuffer.Span[(commandLength + 1)..];
+                //4444:333:someData
+
+                int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
+                //4444:333:someData  ->   4444
+                _ = Utf8Parser.TryParse(span[..delimiterIndex], out firstInteger, out _);
+
+                span = span[(delimiterIndex + 1)..];
+                //333:someData
+
+                delimiterIndex = span.IndexOf(Consts.DelimiterByte);
+                //333:someData  ->  333
+                _ = Utf8Parser.TryParse(span[..delimiterIndex], out secondInteger, out _);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, $"Failed to parse integers. Command: {Encoding.ASCII.GetString(commandBuffer.Span)}");
+                throw;
+            }
+        }
     }
 }

@@ -25,12 +25,12 @@ void StartServer(Config config)
 {
     var tcpMSP = new TcpConnector(config.TcpConfig.TargetVmIp, config.TcpConfig.ListeningPorts, config.LocalVmIp);
     var wsMsp = new WsServer(tcpMSP, Consts.TcpPackageSize);
-    Task.Run(()=> wsMsp.Start(config.WsConfig.WsPort, config.LocalVmIp, config.WsConfig.WsSeccurity));
+    Task.Run(() => wsMsp.Start(config.WsConfig.WsPort, config.LocalVmIp, config.WsConfig.WsSeccurity));
 }
 
 void StartClient(Config config)
 {
     var tcpTenant = new TcpConnector(config.TcpConfig.TargetVmIp, config.TcpConfig.ListeningPorts, config.LocalVmIp);
     var wsTenant = new WsClient(tcpTenant, Consts.TcpPackageSize);
-    Task.Run(()=> wsTenant.Start(config.WsConfig.WsPort, config.WsConfig.WsServerIp, config.WsConfig.WsSeccurity, config.WsConfig.TcpVersion));
+    Task.Run(() => wsTenant.Start(config.WsConfig.WsPort, config.WsConfig.WsServerIp, config.WsConfig.WsSeccurity, config.WsConfig.TcpVersion));
 }
