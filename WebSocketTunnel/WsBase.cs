@@ -64,10 +64,11 @@ public abstract class WsBase
 
         //TODO rewrite with Ascii.FromUtf16 on net8.0
         Span<byte> dataSpan = data.Span;
-        for (int x = 0; x < command.Length; x++)
+        ReadOnlySpan<char> commandSpan = command.AsSpan();
+        for (int x = 0; x < commandSpan.Length; x++)
         {
             ref byte currentByte = ref dataSpan[x];
-            currentByte = (byte)command[x];
+            currentByte = (byte)commandSpan[x];
         }
 
         return WebSocket.SendAsync(data, WebSocketMessageType.Binary, true, CancellationToken.None);
