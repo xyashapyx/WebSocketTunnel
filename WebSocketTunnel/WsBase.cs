@@ -184,7 +184,6 @@ public abstract class WsBase
                 {
                     _logger.Warn($"Second delimiter wasn't found");
 
-                    firstInteger = 0;
                     secondInteger = 0;
                     return;
                 }
