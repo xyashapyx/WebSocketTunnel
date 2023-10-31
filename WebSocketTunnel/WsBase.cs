@@ -1,5 +1,4 @@
 ﻿using NLog;
-using System;
 using System.Buffers;
 using System.Buffers.Text;
 using System.Net.WebSockets;
@@ -161,18 +160,43 @@ public abstract class WsBase
         }
 
 
-        static void ParseStringBytes(Memory<byte> commandBuffer, out int firstInteger, out int secondInteger)
+        void ParseStringBytes(Memory<byte> commandBuffer, out int firstInteger, out int secondInteger)
         {
-            Span<byte> span = commandBuffer.Span[(Consts.CloseCommandBytes.Length + 1)..];
+            try
+            {
+                Span<byte> span = commandBuffer.Span[(Consts.CloseCommandBytes.Length + 1)..];
 
-            int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
-            span = span[..delimiterIndex];
-            _ = Utf8Parser.TryParse(span, out firstInteger, out _);
+                int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
+                if (delimiterIndex == -1)
+                {
+                    _logger.Warn($"First delimiter wasn't found");
 
-            delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
-            span = span[..delimiterIndex];
+                    firstInteger = 0;
+                    secondInteger = 0;
+                    return;
+                }
 
-            _ = Utf8Parser.TryParse(span, out secondInteger, out _);
+                span = span[..delimiterIndex];
+                _ = Utf8Parser.TryParse(span, out firstInteger, out _);
+
+                delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
+                if (delimiterIndex == -1)
+                {
+                    _logger.Warn($"Second delimiter wasn't found");
+
+                    firstInteger = 0;
+                    secondInteger = 0;
+                    return;
+                }
+
+                span = span[..delimiterIndex];
+                _ = Utf8Parser.TryParse(span, out secondInteger, out _);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, $"Failed to parse integers. Command: {Encoding.ASCII.GetString(commandBuffer.Span)}");
+                throw;
+            }
         }
     }
 }
