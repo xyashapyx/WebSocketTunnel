@@ -166,32 +166,18 @@ public abstract class WsBase
             {
                 //new:4444:333:
                 Span<byte> span = commandBuffer.Span[(commandLength + 1)..];
-                //4444:333:
+                //4444:333:...
 
                 int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
-                if (delimiterIndex == -1)
-                {
-                    _logger.Warn($"First delimiter wasn't found");
+                //4444:333:...  ->   4444
+                _ = Utf8Parser.TryParse(span[..delimiterIndex], out firstInteger, out _);
 
-                    firstInteger = 0;
-                    secondInteger = 0;
-                    return;
-                }
-                
-                span = span[..delimiterIndex];
-                _ = Utf8Parser.TryParse(span, out firstInteger, out _);
-            
-                delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
-                if (delimiterIndex == -1)
-                {
-                    _logger.Warn($"Second delimiter wasn't found");
+                //333:...
+                span = span[(delimiterIndex + 1)..];
+                delimiterIndex = span.IndexOf(Consts.DelimiterByte);
 
-                    secondInteger = 0;
-                    return;
-                }
-
-                span = span[..delimiterIndex];
-                _ = Utf8Parser.TryParse(span, out secondInteger, out _);
+                //333:...  ->  333
+                _ = Utf8Parser.TryParse(span[..delimiterIndex], out secondInteger, out _);
             }
             catch (Exception ex)
             {
