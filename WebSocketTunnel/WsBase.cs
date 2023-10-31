@@ -173,8 +173,9 @@ public abstract class WsBase
                 //4444:333:...  ->   4444
                 _ = Utf8Parser.TryParse(span[..delimiterIndex], out firstInteger, out _);
 
-                //333:...
                 span = span[(delimiterIndex + 1)..];
+                //333:...
+
                 delimiterIndex = span.IndexOf(Consts.DelimiterByte);
 
                 //333:...  ->  333
