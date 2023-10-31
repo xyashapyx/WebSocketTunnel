@@ -145,12 +145,12 @@ public abstract class WsBase
         //_logger.Info($"Got command {command}");
         if (commandBuffer.Span.StartsWith(Consts.NewConnectionBytes.Span))
         {
-            ParseStringBytes(commandBuffer, out int remotePort, out int remoteStreamId);
+            ParseStringBytes(commandBuffer, Consts.NewConnectionBytes.Span.Length,out int remotePort, out int remoteStreamId);
             await TcpConnector.EstablishConnectionAsync(remotePort, remoteStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else if (commandBuffer.Span.StartsWith(Consts.ResponseToStreamBytes.Span))
         {
-            ParseStringBytes(commandBuffer, out int localStreamId, out int remoteStreamId);
+            ParseStringBytes(commandBuffer, Consts.ResponseToStreamBytes.Span.Length, out int localStreamId, out int remoteStreamId);
             await TcpConnector.HandleRespondToStreamAsync(remoteStreamId, localStreamId, buffer[Consts.CommandSizeBytes..size]).ConfigureAwait(false);
         }
         else
@@ -160,11 +160,13 @@ public abstract class WsBase
         }
 
 
-        void ParseStringBytes(Memory<byte> commandBuffer, out int firstInteger, out int secondInteger)
+        void ParseStringBytes(Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
         {
             try
             {
-                Span<byte> span = commandBuffer.Span[(Consts.CloseCommandBytes.Length + 1)..];
+                //new:4444:333:
+                Span<byte> span = commandBuffer.Span[(commandLength + 1)..];
+                //4444:333:
 
                 int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
                 if (delimiterIndex == -1)
@@ -175,10 +177,10 @@ public abstract class WsBase
                     secondInteger = 0;
                     return;
                 }
-
+                
                 span = span[..delimiterIndex];
                 _ = Utf8Parser.TryParse(span, out firstInteger, out _);
-
+            
                 delimiterIndex = span.IndexOf(Consts.DelimiterByte) + 1;
                 if (delimiterIndex == -1)
                 {
