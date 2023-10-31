@@ -160,25 +160,25 @@ public abstract class WsBase
         }
 
         // Expects default string
-        // command:4444:333:
+        // command:4444:333:someData
         void ParseStringBytes(in Memory<byte> commandBuffer, in int commandLength, out int firstInteger, out int secondInteger)
         {
             try
             {
-                //command:4444:333:
+                //command:4444:333:someData
                 Span<byte> span = commandBuffer.Span[(commandLength + 1)..];
-                //4444:333:...
+                //4444:333:someData
 
                 int delimiterIndex = span.IndexOf(Consts.DelimiterByte);
-                //4444:333:...  ->   4444
+                //4444:333:someData  ->   4444
                 _ = Utf8Parser.TryParse(span[..delimiterIndex], out firstInteger, out _);
 
                 span = span[(delimiterIndex + 1)..];
-                //333:...
+                //333:someData
 
                 delimiterIndex = span.IndexOf(Consts.DelimiterByte);
 
-                //333:...  ->  333
+                //333:someData  ->  333
                 _ = Utf8Parser.TryParse(span[..delimiterIndex], out secondInteger, out _);
             }
             catch (Exception ex)
