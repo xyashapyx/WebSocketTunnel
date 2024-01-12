@@ -2,6 +2,7 @@ This is an attempt to make TCP to TCP proxy like: https://github.com/hgsgtk/wsp 
 ![image](https://github.com/xyashapyx/WebSocketTunnel/assets/13630078/521adcfa-e2e9-481f-acd4-2438b75359ef)
 ---
 **How to use**
+
 The same program can be used as a server or client depending on configuration.
 It is needed to run 2 instances of the app. One configured as a server and the other configured as a client.
 The config file should be named “Config.json“ and placed in the root folder. This is an example of config:
@@ -25,6 +26,7 @@ The config file should be named “Config.json“ and placed in the root folder.
 ```
 ---
 **Performance testing**
+
 Firstly I tested the throughput of the network connection between 2 VMs. Then I connected those VMs over the Websockt tunnel and repeated testing.
 ![image](https://github.com/xyashapyx/WebSocketTunnel/assets/13630078/927b9e70-b88d-4d71-b2b8-d08114b6f4d0)
 As we can see, throughput drops about 2 times compared to the direct connection. Enabling SSH does not affect throughput significantly.
