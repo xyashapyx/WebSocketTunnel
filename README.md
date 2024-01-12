@@ -29,4 +29,5 @@ Firstly I tested the throughput of the network connection between 2 VMs. Then I 
 ![image](https://github.com/xyashapyx/WebSocketTunnel/assets/13630078/927b9e70-b88d-4d71-b2b8-d08114b6f4d0)
 As we can see, throughput drops about 2 times compared to the direct connection. Enabling SSH does not affect throughput significantly.
 In fact, my implementation does not decrease throughput if the connection speed is below 2500 Mbps. But it has a limit of maximum bandwidth = 2500 Mbps.
+
 ![image](https://github.com/xyashapyx/WebSocketTunnel/assets/13630078/541ee230-e685-4e09-910e-57c1fd34cfed)
